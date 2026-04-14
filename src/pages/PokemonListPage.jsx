@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchPokemonList, fetchPokemonDetail, fetchTypes, getIdFromUrl } from "../services/api";
+import { fetchPokemonList, fetchPokemonDetail, fetchTypes, fetchTypeDetail, getIdFromUrl } from "../services/api";
 import PokemonCard from "../components/PokemonCard";
 import SearchBar from "../components/SearchBar";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -9,6 +9,7 @@ const PAGE_SIZE = 20;
 function PokemonListPage() {
   const [pokemon, setPokemon] = useState([]);
   const [allNames, setAllNames] = useState([]);
+  const [typeNames, setTypeNames] = useState([]); // all names for the selected type
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -18,7 +19,7 @@ function PokemonListPage() {
   const [offset, setOffset] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Fetch all 1025 pokemon names once — used for search and name sorting
+  // Fetch all 1025 pokemon names once
   useEffect(() => {
     async function loadAllNames() {
       try {
@@ -31,46 +32,85 @@ function PokemonListPage() {
     loadAllNames();
   }, []);
 
+  // When type filter changes, fetch all pokemon of that type
+  useEffect(() => {
+    setOffset(0);
+
+    if (selectedType === "all") {
+      setTypeNames([]);
+      return;
+    }
+
+    async function loadTypeNames() {
+      try {
+        const data = await fetchTypeDetail(selectedType);
+        const names = data.pokemon
+          .map((entry) => ({
+            name: entry.pokemon.name,
+            url: entry.pokemon.url,
+          }))
+          .filter((p) => {
+            const id = Number(getIdFromUrl(p.url));
+            return id <= 1025;
+          });
+        setTypeNames(names);
+      } catch (err) {
+        console.log("Failed to load type pokemon");
+      }
+    }
+
+    loadTypeNames();
+  }, [selectedType]);
+
   // Reset to page 1 when sort changes
   useEffect(() => {
     setOffset(0);
   }, [sortBy]);
 
-  // Main data loading effect — runs when offset, sortBy, or search changes
+  // Main loading effect
   useEffect(() => {
     if (allNames.length === 0) return;
+    if (selectedType !== "all" && typeNames.length === 0) return;
 
     async function loadPokemon() {
       setLoading(true);
       setError(null);
       try {
+        // Pick the base list depending on active filter
+        const baseList = selectedType !== "all" ? typeNames : allNames;
+
         let pageNames = [];
 
         if (search.length > 0) {
-          // Search mode: filter all names, take first 20 matches
-          pageNames = allNames
+          // Search within the base list (respects type filter too)
+          pageNames = baseList
             .filter((p) => p.name.includes(search.toLowerCase()))
             .slice(0, 20);
           setTotalCount(pageNames.length);
 
         } else if (sortBy === "id") {
-          // Default mode: use the API's natural order (by ID)
-          const data = await fetchPokemonList(PAGE_SIZE, offset);
-          setTotalCount(data.count);
-          pageNames = data.results;
+          if (selectedType !== "all") {
+            // Type filter active: paginate through typeNames
+            setTotalCount(typeNames.length);
+            pageNames = typeNames.slice(offset, offset + PAGE_SIZE);
+          } else {
+            // Default: use API pagination
+            const data = await fetchPokemonList(PAGE_SIZE, offset);
+            setTotalCount(data.count);
+            pageNames = data.results;
+          }
 
         } else {
-          // Name sort mode: sort allNames client-side, then paginate
-          const sortedAll = [...allNames].sort((a, b) =>
+          // Name sort: sort base list, then paginate
+          const sorted = [...baseList].sort((a, b) =>
             sortBy === "name-asc"
               ? a.name.localeCompare(b.name)
               : b.name.localeCompare(a.name)
           );
-          setTotalCount(sortedAll.length);
-          pageNames = sortedAll.slice(offset, offset + PAGE_SIZE);
+          setTotalCount(sorted.length);
+          pageNames = sorted.slice(offset, offset + PAGE_SIZE);
         }
 
-        // Fetch full details for the current page
         const details = await Promise.all(
           pageNames.map((p) => fetchPokemonDetail(getIdFromUrl(p.url)))
         );
@@ -89,16 +129,15 @@ function PokemonListPage() {
       }
     }
 
-    // Debounce only for search, immediate for page/sort changes
     if (search.length > 0) {
       const timer = setTimeout(loadPokemon, 200);
       return () => clearTimeout(timer);
     } else {
       loadPokemon();
     }
-  }, [offset, sortBy, search, allNames]);
+  }, [offset, sortBy, search, allNames, typeNames, selectedType]);
 
-  // Fetch types for the filter dropdown
+  // Fetch types for the dropdown
   useEffect(() => {
     async function loadTypes() {
       try {
@@ -110,11 +149,6 @@ function PokemonListPage() {
     }
     loadTypes();
   }, []);
-
-  // Filter by type (client-side, on current page only)
-  const filtered = pokemon.filter((p) => {
-    return selectedType === "all" || p.types.includes(selectedType);
-  });
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -158,11 +192,11 @@ function PokemonListPage() {
 
       {loading ? (
         <LoadingSpinner />
-      ) : filtered.length === 0 ? (
+      ) : pokemon.length === 0 ? (
         <p className="text-center text-gray-500 py-10">No Pokemon found.</p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {filtered.map((p) => (
+          {pokemon.map((p) => (
             <PokemonCard key={p.id} id={p.id} name={p.name} types={p.types} />
           ))}
         </div>
