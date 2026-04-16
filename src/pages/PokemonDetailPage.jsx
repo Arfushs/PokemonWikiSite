@@ -119,6 +119,16 @@ function PokemonDetailPage() {
           </div>
         </div>
 
+        {/* Evolution chain button */}
+        <div className="mt-2 mb-6">
+          <button
+            onClick={() => navigate(`/pokemon/${pokemon.id}/evolution`)}
+            className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+          >
+            🌿 View Evolution Chain
+          </button>
+        </div>
+
         {/* Base stats */}
         <div>
           <h2 className="text-xl font-bold text-gray-800 mb-4">Base Stats</h2>

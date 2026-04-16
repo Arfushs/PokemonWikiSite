@@ -1,7 +1,5 @@
-// PokéAPI ile tüm iletişim bu dosyada yapılır
 const BASE = "https://pokeapi.co/api/v2";
 
-// Tek bir fetch yardımcısı — hata yönetimi merkezi
 async function apiFetch(url) {
   const response = await fetch(url);
   if (!response.ok) {
